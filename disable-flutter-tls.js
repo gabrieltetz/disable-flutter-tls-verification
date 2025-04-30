@@ -48,6 +48,7 @@ var flutterLibraryFound = false;
 var tries = 0;
 var maxTries = 5;
 var timeout = 1000;
+var androidBypass = false;
 disableTLSValidation();
 
 
@@ -58,27 +59,51 @@ function disableTLSValidation() {
     if (TLSValidationDisabled) return;
 
     tries ++;
-    if(tries > maxTries){
-        console.log('[!] Max attempts reached, stopping');
-        return;
+    if(tries > maxTries && !androidBypass){
+        console.warn(`\n`)
+        console.warn('[!] Flutter library not found. Possible reasons:');
+        console.warn('[!] - The application does not use Flutter');
+        console.warn('[!] - The application has not loaded the Flutter library yet');
+        console.warn('[!] - You are using an emulator + gadget (https://github.com/NVISOsecurity/disable-flutter-tls-verification/issues/43)');
+        console.warn('[!] The script will continue, but is likely to fail');
+        console.warn(`\n`)
+        androidBypass = true;
+    }else{
+        // No module found yet
+        if(m == null){
+            if(androidBypass){
+                // But we are in bypass mode and are looking for the ssl_verify_peer_certy anyway
+                console.log(`[ ] Locating ssl_verify_peer_cert (${tries}/${maxTries})`)
+            }
+            else{
+                // Still looking for flutter lib
+                console.log(`[ ] Locating Flutter library ${tries}/${maxTries}`);
+            }
+        }
+        else
+        {
+            // Module has been located
+            console.log(`[ ] Locating ssl_verify_peer_cert (${tries}/${maxTries})`)
+        }
     }
     
-    console.log(`[+] Attempting to find and hook ssl_verify_peer_cert (${tries}/${maxTries})`)
 
     // Get reference to module. Necessary for iOS, and usefull check for Android
     var platformConfig = config[Java.available ? "android" : "ios"];
     var m = Process.findModuleByName(platformConfig["modulename"]);
 
-    if (m === null) {
-        console.log('[!] Flutter library not found');
+    if (m === null && !androidBypass) {
         setTimeout(disableTLSValidation, timeout);
         return;
     }
     else{
+        if(!androidBypass){
+            console.log(`[+] Flutter library located`)
+        }
         // reset counter so that searching for ssl_verify_peer_cert also gets x attempts
         if(flutterLibraryFound == false){
             flutterLibraryFound = true;
-            tries = 1;
+            tries = 0;
         }
     }
 
@@ -88,7 +113,6 @@ function disableTLSValidation() {
         if(Java.available){
             // On Android, getting ranges from the loaded module is buggy, so we revert to Process.enumerateRanges
             ranges = Process.enumerateRanges({protection: 'r-x'}).filter(isFlutterRange)
-
         }else{
             // On iOS, there's no issue
             ranges = m.enumerateRanges('r-x')
@@ -103,12 +127,22 @@ function disableTLSValidation() {
 
     if (!TLSValidationDisabled)
     {        
-        if(tries < maxTries){
-            console.log(`[!] Flutter library found, but ssl_verify_peer_cert could not be found.`)
-        }
-        else
+        if (tries == maxTries)
         {
-            console.log('[!] ssl_verify_peer_cert not found. Please open an issue at https://github.com/NVISOsecurity/disable-flutter-tls-verification/issues');
+            if(androidBypass){
+                console.warn(`\n`)
+                console.warn(`[!] No function matching ssl_verify_peer_cert could be found.`)
+                console.warn(`[!] If you are sure that the application is using Flutter, please open an issue:`)
+                console.warn(`[!] https://github.com/NVISOsecurity/disable-flutter-tls-verification/issues`)
+                console.warn(`\n`)
+            }else{
+                console.warn(`\n`)
+                console.error(`[!] libFlutter was found, but ssl_verify_peer_cert could not be located`)
+                console.error(`Please open an issue at https://github.com/NVISOsecurity/disable-flutter-tls-verification/issues`);
+                console.warn(`\n`)
+            }
+            // Not really, but we give up
+            TLSValidationDisabled = true
         }
     }
 }
@@ -121,7 +155,12 @@ function findAndPatch(ranges, patterns, thumb) {
             var matches = Memory.scanSync(range.base, range.size, pattern);
             matches.forEach(match => {
                 var info = DebugSymbol.fromAddress(match.address)
-                console.log(`[+] ssl_verify_peer_cert found at offset: ${info.name}`);
+                if(info.name){
+                    console.log(`[+] ssl_verify_peer_cert found at offset: ${info.name || match.address}`);
+                }else{
+
+                    console.log(`[+] ssl_verify_peer_cert found at location: ${match.address}`);
+                }
                 TLSValidationDisabled = true;
                 hook_ssl_verify_peer_cert(match.address.add(thumb));
                 console.log('[+] ssl_verify_peer_cert has been patched')
@@ -139,6 +178,8 @@ function findAndPatch(ranges, patterns, thumb) {
 }
 
 function isFlutterRange(range){
+    if(androidBypass) return true;
+
     var address = range.base
     var info = DebugSymbol.fromAddress(address)
     if(info.moduleName != null){
