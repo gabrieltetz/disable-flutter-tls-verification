@@ -5,6 +5,7 @@ config = {
             "arm64": [
                 "FF 83 01 D1 FA 67 01 A9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 7B 05 A9 FD 43 01 91 F? 03 00 AA ?? 0? 40 F9 ?8 1? 40 F9 15 ?? 4? F9 B5 00 00 B4",
                 "FF 43 01 D1 F8 5F 01 A9 F6 57 02 A9 F4 4F 03 A9 FD 7B 04 A9 FD 03 01 91 F3 03 00 AA 14 00 40 F9 88 1A 40 F9 15 E9 40 F9 B5 00 00 B4 B6 46 40 F9"
+
             ],
         },
     },
@@ -17,17 +18,31 @@ config = {
                 "FF 43 01 D1 FE 67 01 A9 ?? ?? 06 94 ?? 7? 06 94 68 1A 40 F9 15 15 41 F9 B5 00 00 B4 B6 4A 40 F9",
             ],
             "arm": [
-                "2D E9 F? 4? D0 F8 00 80 81 46 D8 F8 18 00 D0 F8 ??",
+                "2D E9 F? 4? D0 F8 00 80 81 46 D8 F8 18 00 D0 F8",
             ],
             "x64": [
-                "55 41 57 41 56 41 55 41 54 53 50 49 89 f? 4? 8b ?? 4? 8b 4? 30 4c 8b ?? ?? 0? 00 00 4d 85 ?? 74 1? 4d 8b",
-                "55 41 57 41 56 41 55 41 54 53 48 83 EC 18 49 89 FF 48 8B 1F 48 8B 43 30 4C 8B A0 28 02 00 00 4D 85 E4 74"
-                ]
+                "55 41 57 41 56 41 55 41 54 53 50 49 89 F? 4? 8B ?? 4? 8B 4? 30 4C 8B ?? ?? 0? 00 00 4D 85 ?? 74 1? 4D 8B",
+                "55 41 57 41 56 41 55 41 54 53 48 83 EC 18 49 89 FF 48 8B 1F 48 8B 43 30 4C 8B A0 28 02 00 00 4D 85 E4 74",
+                "55 41 57 41 56 41 55 41 54 53 48 83 EC 18 49 89 FE 4C 8B 27 49 8B 44 24 30 48 8B 98 D0 01 00 00 48 85 DB"
+            ],
+            "x86":[
+                "55 89 E5 53 57 56 83 E4 F0 83 EC 20 E8 00 00 00 00 5B 81 C3 2B 79 66 00 8B 7D 08 8B 17 8B 42 18 8B 80 88 01"
+            ]
+
+        }
+    },
+    "windows": {
+        "modulename": "flutter_windows.dll",
+        "patterns":{
+            "x64":[
+                "41 57 41 56 41 55 41 54 56 57 53 48 83 EC 40 4? 89 CF 48 8B 05 ?? ?? ?? 00 48 31 E0 48 89 44 24 38 4? 8B 31 4? 8B",
+                "41 57 41 56 41 55 41 54 56 57 55 53 48 83 EC 38 48 89 CF 48 8B 05 20 45 C6 00 48 31 E0 48 89 44 24 30 48 8B 31 48",
+            ]
         }
     }
-}
 
-import os, glob, re, binascii
+};
+import os, glob, re, binascii, argparse
 
 class bcolors:
     HEADER = '\033[95m'
@@ -132,26 +147,39 @@ def find_all_hex_pattern_offsets(filename: str, hex_pattern: str) -> list:
     return [match.start() for match in pattern.finditer(data)]
 
 
-def scanFiles():
-    for file in list(glob.glob('./*/*/*')):                                       
+def scanFiles(apk=None):
+
+    if apk:
+        # files = list(glob.glob(folder + '/**', recursive=True))
+        files = [
+            f for lib_dir in glob.glob(os.path.join(apk, '**/lib'), recursive=True)
+            for f in glob.glob(os.path.join(lib_dir, '**'), recursive=True)
+            if os.path.isfile(f) and 'flutter' in os.path.basename(f).lower()
+        ]
+    else:
+        files = list(glob.glob('./*/*/*'))                                      
+
+    for file in files:                                    
         with open(file, mode='rb') as f:
             data = f.read()
 
-
-        if "ios" in file:
+        if "windows" in file:
+            patterns = config["windows"]["patterns"]["x64"]
+        elif "ios" in file:
             patterns = config["ios"]["patterns"]["arm64"]
-        elif "x64" in file:
+        elif "x64" in file or "x86_64" in file:
             patterns = config["android"]["patterns"]["x64"]
-        elif "arm64" in file:
+        elif "arm64" in file or "arm64-v8a" in file:
             patterns = config["android"]["patterns"]["arm64"]
-        elif "arm" in file:
+        elif "arm" in file or "armeabi-v7a" in file:
             patterns = config["android"]["patterns"]["arm"]
+        elif "x86" in file:
+            patterns = config["android"]["patterns"]["x86"]
 
 
 
         results = []
         for hex_pattern in patterns:
-
             offsets = find_all_hex_pattern_offsets(file, hex_pattern)
             results += [(hex(a), hex_pattern) for a in offsets]
             
@@ -164,5 +192,12 @@ def scanFiles():
             print(f"{file} > {bcolors.FAIL} NOK {bcolors.ENDC}")
 
 
+
+
+
 if __name__ == "__main__":
-    scanFiles()
+    parser = argparse.ArgumentParser(description="Verify hashes against samples or given APK folder")
+    parser.add_argument('-a', '--apk', default=None, help='If given, scans APK folder for libflutter.so')
+    args = parser.parse_args()
+
+    scanFiles(args.apk)
