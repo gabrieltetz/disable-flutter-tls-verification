@@ -9,14 +9,15 @@ If the script doesn't work, take a look at https://github.com/NVISOsecurity/disa
 
 */
 
-// Configuration object containing patterns to locate the ssl_verify_peer_cert function
-// for different platforms and architectures.
+// Configuration object containing patterns to locate the ssl_verify_peer_cert function for different platforms and architectures.
 var config = {
     "ios":{
         "modulename": "Flutter",
         "patterns":{
             "arm64": [
-                "FF 83 01 D1 FA 67 01 A9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 7B 05 A9 FD 43 01 91 F? 03 00 AA ?? 0? 40 F9 ?8 1? 40 F9 15 ?? 4? F9 B5 00 00 B4",
+                // First pattern is actually for macos
+                "FF 83 01 D1 FA 67 01 A9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 7B 05 A9 FD 43 01 91 F4 03 00 AA 68 31 00 F0 08 01 40 F9 08 01 40 F9 E8 07 00 F9",
+                "FF 83 01 D1 FA 67 01 A9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 7B 05 A9 FD 43 01 91 F? 03 00 AA ?? 0? 40 F? ?8 ?? 40 F9 ?? ?? 4? F9 ?? 00 00",
                 "FF 43 01 D1 F8 5F 01 A9 F6 57 02 A9 F4 4F 03 A9 FD 7B 04 A9 FD 03 01 91 F3 03 00 AA 14 00 40 F9 88 1A 40 F9 15 E9 40 F9 B5 00 00 B4 B6 46 40 F9"
 
             ],
@@ -52,11 +53,20 @@ var config = {
                 "41 57 41 56 41 55 41 54 56 57 55 53 48 83 EC 38 48 89 CF 48 8B 05 20 45 C6 00 48 31 E0 48 89 44 24 30 48 8B 31 48",
             ]
         }
+    },
+    "linux":{
+        "modulename": "libflutter_linux_gtk.so",
+        "patterns":{
+            "x64":[
+                // This one actually matches android x64 too
+                "55 41 57 41 56 41 55 41 54 53 48 83 EC 18 49 89 FE 4C 8B 27 49 8B 44 24 30 48 8B 98 D0 01 00 00 48 85 DB"
+            ]
+        }
     }
-
 };
-
+console.log("[+] Pattern version: May 19 2025")
 console.log("[+] Arch:", Process.arch)
+console.log("[+] Platform: ", Process.platform)
 // Flag to check if TLS validation has already been disabled
 var TLSValidationDisabled = false;
 var flutterLibraryFound = false;
@@ -80,11 +90,18 @@ function disableTLSValidation() {
     
     console.log(`[+] Attempting to find and hook ssl_verify_peer_cert (${tries}/${maxTries})`)
 
-    // Get reference to module. Necessary for iOS, and usefull check for Android
+    // Figure out which patterns to use
     var platformConfig = {}
-    if(Process.platform in config){
+    if(Java.available){
+        platformConfig = config["android"]
+    }
+    else if(Java.available || Swift.available){
+        platformConfig = config["ios"]
+    }
+    else if(Process.platform in config){
         platformConfig = config[Process.platform]
-    }else{
+    }
+    else{
         console.log(`[!] Platform not supported: ${Process.platform}`)
     }
 

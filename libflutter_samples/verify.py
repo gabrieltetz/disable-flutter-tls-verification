@@ -3,6 +3,8 @@ config = {
         "modulename": "Flutter",
         "patterns":{
             "arm64": [
+                # First pattern is actually for macos
+                "FF 83 01 D1 FA 67 01 A9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 7B 05 A9 FD 43 01 91 F4 03 00 AA 68 31 00 F0 08 01 40 F9 08 01 40 F9 E8 07 00 F9",
                 "FF 83 01 D1 FA 67 01 A9 F8 5F 02 A9 F6 57 03 A9 F4 4F 04 A9 FD 7B 05 A9 FD 43 01 91 F? 03 00 AA ?? 0? 40 F9 ?8 1? 40 F9 15 ?? 4? F9 B5 00 00 B4",
                 "FF 43 01 D1 F8 5F 01 A9 F6 57 02 A9 F4 4F 03 A9 FD 7B 04 A9 FD 03 01 91 F3 03 00 AA 14 00 40 F9 88 1A 40 F9 15 E9 40 F9 B5 00 00 B4 B6 46 40 F9"
 
@@ -165,7 +167,7 @@ def scanFiles(apk=None):
 
         if "windows" in file:
             patterns = config["windows"]["patterns"]["x64"]
-        elif "ios" in file:
+        elif "ios" in file or "macos" in file:
             patterns = config["ios"]["patterns"]["arm64"]
         elif "x64" in file or "x86_64" in file:
             patterns = config["android"]["patterns"]["x64"]
@@ -175,8 +177,6 @@ def scanFiles(apk=None):
             patterns = config["android"]["patterns"]["arm"]
         elif "x86" in file:
             patterns = config["android"]["patterns"]["x86"]
-
-
 
         results = []
         for hex_pattern in patterns:
